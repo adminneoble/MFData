@@ -1,0 +1,16 @@
+docker build -t mf-data-service .
+
+docker tag mf-data-service forwarddevacr.azurecr.io/mf-data-service:v1 
+
+docker run -p 8080:8080 mf-data-service
+ 
+az login
+
+az acr login --name forwarddevacr
+az account set --subscription 7e06b4c6-aa3f-4ae6-8c97-2d63744f1af7
+docker push forwarddevacr.azurecr.io/mf-data-service:v1
+
+az containerapp update --name mf-data-svc --resource-group forward-dev-resgrp --image forwarddevacr.azurecr.io/mf-data-service:v1
+
+
+https://mf-data-svc.ashyground-74c33e61.southindia.azurecontainerapps.io
