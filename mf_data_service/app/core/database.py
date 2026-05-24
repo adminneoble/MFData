@@ -1,5 +1,19 @@
+from typing import Any, Union
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.core.config import get_settings
+
+
+def sc_filter(schemecode: Union[str, int]) -> Any:
+    """MongoDB filter value that matches both str and int schemecode storage.
+
+    Datadump records store schemecode as string ("513"); daily-sync records
+    store it as int (513).  Using $in covers both without schema migration.
+    """
+    sc = str(schemecode).strip()
+    try:
+        return {"$in": [sc, int(sc)]}
+    except (ValueError, TypeError):
+        return sc
 
 _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None

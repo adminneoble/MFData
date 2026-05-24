@@ -1,4 +1,4 @@
-docker build -t mf-data-service .
+docker build --platform linux/amd64  -t mf-data-service .
 
 docker tag mf-data-service forwarddevacr.azurecr.io/mf-data-service:v1 
 

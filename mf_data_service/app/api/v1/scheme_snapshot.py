@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.core.database import get_db
+from app.core.database import get_db, sc_filter
 from app.schemas.requests import BulkSchemeCodeRequest
 
 router = APIRouter(prefix="/scheme-snapshot", tags=["Scheme Snapshot"])
@@ -9,16 +9,13 @@ router = APIRouter(prefix="/scheme-snapshot", tags=["Scheme Snapshot"])
 
 async def _build_snapshot(db: AsyncIOMotorDatabase, schemecode: str) -> dict:
     """Build a composite snapshot for a scheme."""
-    scheme = await db.scheme_master.find_one(
-        {"schemecode": schemecode}, {"_id": 0}
-    )
+    sc = sc_filter(schemecode)
+    scheme = await db.scheme_master.find_one({"schemecode": sc}, {"_id": 0})
     if not scheme:
         return None
 
     # ISIN
-    isin_doc = await db.scheme_isin.find_one(
-        {"Schemecode": schemecode}, {"_id": 0}
-    )
+    isin_doc = await db.scheme_isin.find_one({"Schemecode": sc}, {"_id": 0})
     if isin_doc:
         scheme["isin"] = isin_doc.get("ISIN")
         scheme["isin_details"] = isin_doc
@@ -32,33 +29,25 @@ async def _build_snapshot(db: AsyncIOMotorDatabase, schemecode: str) -> dict:
             scheme["classification"] = sclass
 
     # Current NAV
-    nav = await db.current_nav.find_one(
-        {"schemecode": schemecode}, {"_id": 0}
-    )
+    nav = await db.current_nav.find_one({"schemecode": sc}, {"_id": 0})
     if nav:
         scheme["current_nav"] = nav
 
     # Performance (returns)
-    returns = await db.scheme_performance.find_one(
-        {"schemecode": schemecode}, {"_id": 0}
-    )
+    returns = await db.scheme_performance.find_one({"schemecode": sc}, {"_id": 0})
     if returns:
         scheme["performance"] = returns
 
     # Expense ratio
     expense = await db.expense_ratio.find_one(
-        {"schemecode": schemecode},
-        {"_id": 0},
-        sort=[("date", -1)],
+        {"schemecode": sc}, {"_id": 0}, sort=[("date", -1)]
     )
     if expense:
         scheme["expense_ratio"] = expense.get("expratio")
 
     # Latest AUM
     aum = await db.scheme_aum.find_one(
-        {"schemecode": schemecode},
-        {"_id": 0},
-        sort=[("date", -1)],
+        {"schemecode": sc}, {"_id": 0}, sort=[("date", -1)]
     )
     if aum:
         scheme["aum"] = aum

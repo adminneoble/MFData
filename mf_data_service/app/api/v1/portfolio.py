@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional
 
-from app.core.database import get_db
+from app.core.database import get_db, sc_filter
 
 router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 
@@ -16,16 +16,15 @@ async def get_portfolio(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get portfolio holdings for a scheme."""
-    query: dict = {"schemecode": schemecode}
+    sc = sc_filter(schemecode)
+    query: dict = {"schemecode": sc}
 
     if as_of_date:
         query["invdate"] = {"$regex": f"^{as_of_date}"}
     else:
         # Get the latest portfolio date
         latest = await db.scheme_portfolio.find_one(
-            {"schemecode": schemecode},
-            {"invdate": 1},
-            sort=[("invdate", -1)],
+            {"schemecode": sc}, {"invdate": 1}, sort=[("invdate", -1)]
         )
         if latest:
             query["invdate"] = latest["invdate"]
@@ -41,7 +40,7 @@ async def get_portfolio(
     items = await cursor.to_list(length=page_size)
 
     if not items:
-        exists = await db.scheme_master.find_one({"schemecode": schemecode})
+        exists = await db.scheme_master.find_one({"schemecode": sc})
         if not exists:
             raise HTTPException(status_code=404, detail=f"Scheme {schemecode} not found")
 
@@ -68,15 +67,14 @@ async def get_equity_holdings(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get only equity holdings for a scheme."""
-    query: dict = {"schemecode": schemecode, "asect_name": "Domestic Equities"}
+    sc = sc_filter(schemecode)
+    query: dict = {"schemecode": sc, "asect_name": "Domestic Equities"}
 
     if as_of_date:
         query["invdate"] = {"$regex": f"^{as_of_date}"}
     else:
         latest = await db.scheme_portfolio.find_one(
-            {"schemecode": schemecode},
-            {"invdate": 1},
-            sort=[("invdate", -1)],
+            {"schemecode": sc}, {"invdate": 1}, sort=[("invdate", -1)]
         )
         if latest:
             query["invdate"] = latest["invdate"]

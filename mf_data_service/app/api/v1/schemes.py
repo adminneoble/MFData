@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional
 
-from app.core.database import get_db
+from app.core.database import get_db, sc_filter
 from app.schemas.requests import BulkSchemeCodeRequest, BulkISINRequest
 
 router = APIRouter(prefix="/schemes", tags=["Schemes"])
@@ -71,16 +71,13 @@ async def get_scheme(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get a single scheme by schemecode."""
-    scheme = await db.scheme_master.find_one(
-        {"schemecode": schemecode}, {"_id": 0}
-    )
+    sc = sc_filter(schemecode)
+    scheme = await db.scheme_master.find_one({"schemecode": sc}, {"_id": 0})
     if not scheme:
         raise HTTPException(status_code=404, detail=f"Scheme {schemecode} not found")
 
     # Enrich with ISIN
-    isin_doc = await db.scheme_isin.find_one(
-        {"Schemecode": schemecode}, {"_id": 0}
-    )
+    isin_doc = await db.scheme_isin.find_one({"Schemecode": sc}, {"_id": 0})
     if isin_doc:
         scheme["isin_details"] = isin_doc
         scheme["isin"] = isin_doc.get("ISIN")
@@ -94,9 +91,7 @@ async def get_scheme(
             scheme["classification"] = sclass
 
     # Enrich with current NAV
-    nav = await db.current_nav.find_one(
-        {"schemecode": schemecode}, {"_id": 0}
-    )
+    nav = await db.current_nav.find_one({"schemecode": sc}, {"_id": 0})
     if nav:
         scheme["current_nav"] = nav
 
@@ -109,9 +104,7 @@ async def get_scheme_master(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get scheme metadata only (no enrichment)."""
-    scheme = await db.scheme_master.find_one(
-        {"schemecode": schemecode}, {"_id": 0}
-    )
+    scheme = await db.scheme_master.find_one({"schemecode": sc_filter(schemecode)}, {"_id": 0})
     if not scheme:
         raise HTTPException(status_code=404, detail=f"Scheme {schemecode} not found")
     return {"data": scheme}
@@ -123,8 +116,12 @@ async def get_schemes_bulk(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Get multiple schemes by schemecodes."""
-    cursor = db.scheme_master.find(
-        {"schemecode": {"$in": request.schemecodes}}, {"_id": 0}
-    )
-    items = await cursor.to_list(length=len(request.schemecodes))
+    all_codes = list(request.schemecodes)
+    for sc in request.schemecodes:
+        try:
+            all_codes.append(int(sc))
+        except (ValueError, TypeError):
+            pass
+    cursor = db.scheme_master.find({"schemecode": {"$in": all_codes}}, {"_id": 0})
+    items = await cursor.to_list(length=len(all_codes))
     return {"data": items, "count": len(items)}
